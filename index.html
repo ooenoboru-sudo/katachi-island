@@ -1,0 +1,420 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>かたち探検島｜面積の学習ゲーム</title>
+<style>
+* { box-sizing:border-box; }
+body {
+  margin:0;
+  padding:16px;
+  background:linear-gradient(160deg,#dcf5fc,#f2f9e9);
+  color:#28596a;
+  font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+  line-height:1.6;
+}
+main {
+  width:100%;
+  max-width:680px;
+  margin:20px auto;
+  padding:24px 16px;
+  background:white;
+  border-radius:25px;
+  box-shadow:0 8px 28px #307e9220;
+  text-align:center;
+}
+h1 { color:#217e89; font-size:28px; margin:6px 0; }
+p { margin:12px 0; }
+button {
+  border:0;
+  border-radius:13px;
+  background:#268396;
+  color:white;
+  font:inherit;
+  font-weight:bold;
+  padding:12px 17px;
+  margin:5px;
+  min-height:46px;
+  cursor:pointer;
+}
+button:hover { background:#176879; }
+button:focus-visible, input:focus-visible {
+  outline:3px solid #f5b34c;
+  outline-offset:3px;
+}
+.secondary { background:#dbece9; color:#28596a; }
+.secondary:hover { background:#c5e3de; }
+.progress {
+  height:12px;
+  background:#dcebec;
+  border-radius:30px;
+  margin:18px auto;
+  max-width:480px;
+  overflow:hidden;
+}
+#bar {
+  width:0%;
+  height:100%;
+  background:#41ae92;
+  transition:width .25s;
+}
+.board {
+  background:#f7fcfa;
+  border:2px solid #dfefeb;
+  border-radius:18px;
+  padding:12px 6px;
+  margin:15px 0;
+}
+svg {
+  display:block;
+  width:100%;
+  max-height:310px;
+  margin:auto;
+}
+input {
+  width:105px;
+  border:2px solid #a8c9cd;
+  background:white;
+  border-radius:10px;
+  padding:9px;
+  font-size:23px;
+  text-align:center;
+  color:#28596a;
+}
+#message { min-height:35px; font-weight:bold; }
+.note { color:#638087; font-size:14px; }
+.badge {
+  display:inline-block;
+  background:#e5f3ed;
+  border-radius:30px;
+  padding:5px 14px;
+  font-weight:bold;
+}
+[hidden] { display:none !important; }
+@media(max-width:480px) {
+  body { padding:8px; }
+  main { margin:8px auto; padding:18px 10px; }
+  h1 { font-size:24px; }
+  button { font-size:15px; padding:11px 12px; }
+}
+</style>
+</head>
+<body>
+
+<main id="game">
+  <h1>🌿 かたち探検島</h1>
+  <p class="note">四角を見つける20問のぼうけん</p>
+
+  <div id="intro">
+    <p>四角を分けたり、大きな四角から引いたりして、面積を考えよう！</p>
+    <button id="startBtn" type="button">🚀 ぼうけんスタート</button>
+    <p class="note">1マス = 1cm²</p>
+  </div>
+
+  <section id="play" hidden>
+    <p class="badge" id="stage"></p>
+    <p id="count"></p>
+    <div class="progress"><div id="bar"></div></div>
+
+    <p><strong>緑色の形の面積は？</strong></p>
+    <p class="note">1マス = 1cm²</p>
+    <div class="board" id="board"></div>
+
+    <div>
+      <button id="splitBtn" type="button">✂️ 分ける</button>
+      <button id="bigBtn" type="button">🟨 大きな四角</button>
+      <button id="resetBtn" type="button" class="secondary">もどす</button>
+    </div>
+
+    <p id="guide"></p>
+
+    <div>
+      <label for="answer">答え：</label>
+      <input id="answer" type="number" min="0" step="1" inputmode="numeric">
+      <span>cm²</span>
+    </div>
+
+    <button id="checkBtn" type="button">たしかめる</button>
+    <p id="message" role="status" aria-live="polite"></p>
+    <button id="hintBtn" type="button" class="secondary">💡 ヒント</button>
+    <button id="nextBtn" type="button" hidden>つぎの問題へ →</button>
+  </section>
+
+  <section id="finish" hidden>
+    <h2>🏆 20問クリア！</h2>
+    <p>おめでとう！ 面積マスターだね！</p>
+    <p>形を分ける方法と、大きな四角から引く方法を使えたかな？</p>
+    <button id="restartBtn" type="button">もう一度あそぶ</button>
+  </section>
+</main>
+
+<script>
+(function(){
+"use strict";
+
+const $ = id => document.getElementById(id);
+const STORE = "katachi-island-20-v1";
+const TOTAL = 20;
+const stages = [
+  "四角をさがそう",
+  "分けてみよう",
+  "大きな四角から引こう",
+  "いろんな形に挑戦",
+  "面積マスター"
+];
+
+let problems = [];
+let index = 0;
+let mode = "";
+let cut = "";
+let hintLevel = 0;
+let solved = false;
+
+function rand(min,max){
+  return Math.floor(Math.random()*(max-min+1))+min;
+}
+
+function makeProblem(i){
+  const w = rand(5,8+Math.floor(i/5));
+  const h = rand(4,7+Math.floor(i/5));
+  const a = rand(2,w-2);
+  const b = rand(2,h-2);
+  return {
+    w:w,h:h,a:a,b:b,
+    flip:rand(0,3),
+    answer:w*h-a*b
+  };
+}
+
+function save(){
+  try {
+    localStorage.setItem(STORE,JSON.stringify({index,problems}));
+  } catch(e){}
+}
+
+function show(id){
+  $("intro").hidden = id!=="intro";
+  $("play").hidden = id!=="play";
+  $("finish").hidden = id!=="finish";
+}
+
+function start(){
+  problems = Array.from({length:TOTAL},(_,i)=>makeProblem(i));
+  index=0;
+  mode="";
+  cut="";
+  hintLevel=0;
+  solved=false;
+  save();
+  render();
+}
+
+function missing(p,x,y){
+  const horizontal = p.flip%2 ? x>=p.w-p.a : x<p.a;
+  const vertical = p.flip>=2 ? y>=p.h-p.b : y<p.b;
+  return horizontal && vertical;
+}
+
+function line(id,x1,y1,x2,y2){
+  const active=cut===id;
+  return `<line data-line="${id}" x1="${x1}" y1="${y1}"
+    x2="${x2}" y2="${y2}"
+    stroke="${active?"#df5938":"#eaa15d"}"
+    stroke-width="${active?5:3}"
+    stroke-dasharray="6 5" pointer-events="stroke"
+    style="cursor:pointer"/>`;
+}
+
+function draw(p){
+  const size=Math.min(29,270/Math.max(p.w,p.h));
+  let svg="";
+
+  for(let y=0;y<p.h;y++){
+    for(let x=0;x<p.w;x++){
+      const gone=missing(p,x,y);
+      if(gone && mode!=="big") continue;
+      svg+=`<rect x="${x*size+5}" y="${y*size+5}"
+        width="${size}" height="${size}"
+        fill="${gone?"#f9d8a4":"#a9dfd0"}"
+        stroke="#79aaa6" stroke-width=".7"/>`;
+    }
+  }
+
+  if(mode==="split"){
+    for(let x=1;x<p.w;x++){
+      svg+=line("v"+x,x*size+5,5,x*size+5,p.h*size+5);
+    }
+    for(let y=1;y<p.h;y++){
+      svg+=line("h"+y,5,y*size+5,p.w*size+5,y*size+5);
+    }
+  }
+
+  $("board").innerHTML=
+    `<svg viewBox="0 0 ${p.w*size+10} ${p.h*size+10}"
+      role="img" aria-label="面積を求める緑色の図形">
+      ${svg}</svg>`;
+}
+
+function updateGuide(){
+  const p=problems[index];
+
+  if(mode==="big"){
+    $("guide").textContent=
+      `大きな四角は ${p.w} × ${p.h}。黄色の部分を引こう。`;
+  }else if(mode==="split"){
+    $("guide").textContent=cut
+      ? "線を選んだよ。できた四角の面積を考えよう。"
+      : "オレンジの線をタップしてみよう。";
+  }else{
+    $("guide").textContent="どこに四角がかくれているかな？";
+  }
+}
+
+function render(){
+  if(index>=TOTAL){
+    $("bar").style.width="100%";
+    show("finish");
+    return;
+  }
+
+  show("play");
+  const p=problems[index];
+
+  $("stage").textContent=stages[Math.floor(index/4)];
+  $("count").textContent=`第 ${index+1} 問 / ${TOTAL}`;
+  $("bar").style.width=(index/TOTAL*100)+"%";
+
+  $("answer").value="";
+  $("answer").disabled=solved;
+  $("checkBtn").disabled=solved;
+  $("message").textContent="";
+  $("hintBtn").hidden=solved;
+  $("nextBtn").hidden=!solved;
+
+  draw(p);
+  updateGuide();
+}
+
+function changeMode(newMode){
+  if(index>=TOTAL) return;
+  const oldValue=$("answer").value;
+  const oldMessage=$("message").textContent;
+  mode=newMode;
+  cut="";
+  draw(problems[index]);
+  updateGuide();
+  $("answer").value=oldValue;
+  $("message").textContent=oldMessage;
+}
+
+function check(){
+  if(solved || index>=TOTAL) return;
+
+  const raw=$("answer").value.trim();
+  const value=Number(raw);
+  const message=$("message");
+
+  if(raw===""){
+    message.textContent="答えを入力してね。";
+    return;
+  }
+
+  if(!Number.isInteger(value) || value<0){
+    message.textContent="0以上の整数を入力してね。";
+    return;
+  }
+
+  if(value===problems[index].answer){
+    solved=true;
+    message.textContent="✨ せいかい！ よく考えたね！";
+    $("answer").disabled=true;
+    $("checkBtn").disabled=true;
+    $("hintBtn").hidden=true;
+    $("nextBtn").hidden=false;
+  }else{
+    message.textContent=
+      "もう一度考えてみよう。四角に分けるとどうかな？";
+  }
+}
+
+function next(){
+  if(!solved) return;
+  index++;
+  mode="";
+  cut="";
+  hintLevel=0;
+  solved=false;
+  save();
+  render();
+}
+
+function hint(){
+  if(solved || index>=TOTAL) return;
+
+  const p=problems[index];
+  hintLevel=Math.min(3,hintLevel+1);
+  const messages=[
+    "四角に分けられるところをさがそう。",
+    `大きな四角は、たて ${p.h}cm、よこ ${p.w}cm だよ。`,
+    `大きな四角は ${p.w}×${p.h}。そこから ${p.a}×${p.b} を引いてみよう。`
+  ];
+
+  $("message").textContent="💡 "+messages[hintLevel-1];
+}
+
+$("startBtn").addEventListener("click",start);
+$("restartBtn").addEventListener("click",start);
+$("splitBtn").addEventListener("click",()=>changeMode("split"));
+$("bigBtn").addEventListener("click",()=>changeMode("big"));
+$("resetBtn").addEventListener("click",()=>changeMode(""));
+$("checkBtn").addEventListener("click",check);
+$("hintBtn").addEventListener("click",hint);
+$("nextBtn").addEventListener("click",next);
+
+$("answer").addEventListener("keydown",function(e){
+  if(e.key==="Enter") check();
+});
+
+$("board").addEventListener("click",function(e){
+  const target=e.target.closest("[data-line]");
+  if(!target || mode!=="split") return;
+
+  cut=target.dataset.line;
+  draw(problems[index]);
+  updateGuide();
+});
+
+try {
+  const saved=JSON.parse(localStorage.getItem(STORE));
+
+  if(saved &&
+     Array.isArray(saved.problems) &&
+     saved.problems.length===TOTAL &&
+     Number.isInteger(saved.index) &&
+     saved.index>=0 &&
+     saved.index<=TOTAL &&
+     saved.problems.every(p=>
+       Number.isInteger(p.w) &&
+       Number.isInteger(p.h) &&
+       Number.isInteger(p.a) &&
+       Number.isInteger(p.b) &&
+       Number.isInteger(p.flip) &&
+       p.w>=5 && p.w<=11 &&
+       p.h>=4 && p.h<=10 &&
+       p.a>=2 && p.a<=p.w-2 &&
+       p.b>=2 && p.b<=p.h-2 &&
+       p.flip>=0 && p.flip<=3 &&
+       p.answer===p.w*p.h-p.a*p.b
+     )){
+    problems=saved.problems;
+    index=saved.index;
+    render();
+  }
+}catch(e){}
+
+})();
+</script>
+</body>
+</html>
